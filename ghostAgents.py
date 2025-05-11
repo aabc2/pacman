@@ -19,7 +19,7 @@ import random
 from util import manhattanDistance
 import util
 import random
-random.seed(42)  # For reproducibility
+random.seed(2)  # For reproducibility
 
 class GhostAgent(Agent):
     def __init__(self, index):

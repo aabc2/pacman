@@ -13,8 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 # Fijamos todas las semillas para reproducibilidad
-torch.manual_seed(42)
-random.seed(42)
+torch.manual_seed(2)
+random.seed(2)
 # Constantes
 INPUT_SIZE = None  # Se determinará en tiempo de ejecución basado en el tamaño del mapa
 HIDDEN_SIZE = 128
@@ -228,7 +228,7 @@ def main():
     
     # Dividir en conjunto de entrenamiento y test
     X_train, X_test, y_train, y_test = train_test_split(
-        maps, actions, test_size=0.2, random_state=42, stratify=actions
+        maps, actions, test_size=0.2, random_state=2, stratify=actions
     )
     
     # Crear datasets
