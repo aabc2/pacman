@@ -678,6 +678,10 @@ def readCommand(argv):
 
 
 def loadAgent(pacman, nographics):
+    # Añade esto al principio del cuerpo de la función
+    if pacman in ['AlphaBetaAgent', 'MinimaxAgent', 'ExpectimaxAgent', 'NeuralAgent']:
+        from multiAgents import AlphaBetaAgent, MinimaxAgent, ExpectimaxAgent, NeuralAgent
+        return eval(pacman)
     # Looks through all pythonPath Directories for the right module,
     pythonPathStr = os.path.expandvars("$PYTHONPATH")
     if pythonPathStr.find(';') == -1:
