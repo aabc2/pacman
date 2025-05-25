@@ -35,7 +35,7 @@ import sys
 ###################################################
 import gamedata # Para la extraccion de datos de la partida
 import random
-random.seed(1041) # Para reproducibilidad de los resultados
+random.seed(999) # Para reproducibilidad de los resultados
 ###################################################
 
 class Agent:

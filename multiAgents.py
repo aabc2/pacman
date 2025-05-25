@@ -18,7 +18,7 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(1041)  # For reproducibility
+random.seed(999)  # For reproducibility
 from game import Agent
 from pacman import GameState
 
@@ -242,58 +242,180 @@ class NeuralAgent(Agent):
 
     def evaluationFunction(self, state):
         """
-        Una función de evaluación basada en la red neuronal y en heurísticas adicionales.
+        Evaluación híbrida (red + heurística) robusta:
+          • STOP hiper-penalizado (aún más con fantasmas / comida cerca)
+          • Comida, cápsulas, fantasmas, callejones, apertura…
+          • Antibucle, estancamiento, bonus pasillo despejado
         """
+        # ─── 0. MODELO ──────────────────────────────────────────────
         if self.model is None:
-            return 0  # Si no hay modelo, devolver 0
-        
-        # Convertir a matriz
-        state_matrix = self.state_to_matrix(state)
-        
-        # Convertir a tensor
-        state_tensor = torch.FloatTensor(state_matrix).unsqueeze(0).to(self.device)
-        
-        # Obtener predicciones
+            return 0
+
+        # ─── A) MEMORIA LOCAL (creada la 1ª vez) ───────────────────
+        from collections import deque
+        if not hasattr(self, "_pos_hist"):
+            self._pos_hist       = deque(maxlen=14)
+            self._steps_no_food  = 0
+            self._prev_food_left = None
+
+        # ─── 1. RED NEURONAL ───────────────────────────────────────
+        import torch
+        state_tensor = torch.FloatTensor(self.state_to_matrix(state)).unsqueeze(0).to(self.device)
         with torch.no_grad():
-            output = self.model(state_tensor)
-            probabilities = torch.nn.functional.softmax(output, dim=1).cpu().numpy()[0]
-        
-        # Obtener acciones legales
+            probs = torch.softmax(self.model(state_tensor), dim=1)[0].cpu().numpy()
+
+        from game import Directions
         legal_actions = state.getLegalActions()
-        
-        # Aplicar heurísticas adicionales, similar a betterEvaluationFunction
-        score = state.getScore()
-        
-        # Mejorar la evaluación con conocimiento del dominio
-        pacman_pos = state.getPacmanPosition()
-        food = state.getFood().asList()
-        ghost_states = state.getGhostStates()
-        
-        # Factor 1: Distancia a la comida más cercana
-        if food:
-            min_food_distance = min(manhattanDistance(pacman_pos, food_pos) for food_pos in food)
-            score += 1.0 / (min_food_distance + 1)
-        
-        # Factor 2: Proximidad a fantasmas
-        for ghost_state in ghost_states:
-            ghost_pos = ghost_state.getPosition()
-            ghost_distance = manhattanDistance(pacman_pos, ghost_pos)
-            
-            if ghost_state.scaredTimer > 0:
-                # Si el fantasma está asustado, acercarse a él
-                score += 50 / (ghost_distance + 1)
+        neural_score  = sum(
+            probs[i] * 100 for i, a in self.idx_to_action.items() if a in legal_actions
+        )
+
+        # ─── 2. HEURÍSTICA DE DOMINIO ──────────────────────────────
+        from util import manhattanDistance
+        walls        = state.getWalls()
+        width, h     = walls.width, walls.height
+        pac          = state.getPacmanPosition()
+        food_list    = state.getFood().asList()
+        caps         = state.getCapsules()
+        ghosts       = state.getGhostStates()
+        score        = state.getScore()
+
+        # ► 2.0 Fantasmas cercanos (para STOP y otros castigos)
+        close_threats = sum(
+            1 for g in ghosts if not g.scaredTimer and manhattanDistance(pac, g.getPosition()) <= 3
+        )
+
+        # 2.1 Comida
+        if food_list:
+            d_food = min(manhattanDistance(pac, f) for f in food_list)
+            score += 12.0 / (d_food + 1)
+        score -= 4 * len(food_list)
+        if 0 < len(food_list) <= 2:
+            score += 25 / (d_food + 1)
+
+        # 2.2 Cápsulas
+        if caps:
+            d_cap = min(manhattanDistance(pac, c) for c in caps)
+            score += 15.0 / (d_cap + 1)
+        score -= 18 * len(caps)
+
+        # 2.3 Fantasmas y multi-amenaza
+        min_gdist  = float('inf')
+        danger_cnt = 0
+        ghost_dists = []
+        for g in ghosts:
+            d = manhattanDistance(pac, g.getPosition())
+            ghost_dists.append(d)
+            min_gdist = min(min_gdist, d)
+            if g.scaredTimer > 0:
+                score += 200.0 / (d + 1) + g.scaredTimer
             else:
-                # Si no está asustado, evitarlo
-                if ghost_distance <= 2:
-                    score -= 200  # Gran penalización por estar demasiado cerca
-        
-        # Combinar la puntuación de la red con la heurística
-        neural_score = 0
-        for i, action in enumerate(self.idx_to_action.values()):
-            if action in legal_actions:
-                neural_score += probabilities[i] * 100
-        
+                score -= 6.0 / max(d, 1)
+                if d <= 1:
+                    score -= 500
+                if d <= 3:
+                    danger_cnt += 1
+        if danger_cnt >= 2:
+            score -= 40 * danger_cnt
+        if caps and danger_cnt and min_gdist <= 5:
+            score += 20 / (d_cap + 1) * (6 - min_gdist)
+
+        # 2.4 Margen de seguridad
+        if min_gdist > 4:
+            score += 2 * min_gdist
+
+        # 2.5 Callejones / esquinas
+        x, y = pac
+        neigh = [(1,0), (-1,0), (0,1), (0,-1)]
+        free  = [(dx,dy) for dx,dy in neigh if not walls[x+dx][y+dy]]
+        exits = len(free)
+        is_corner = exits == 2 and abs(free[0][0]) != abs(free[1][0])
+        if exits == 1:
+            score -= 6
+            if min_gdist <= 4:
+                score -= 50 / max(min_gdist, 1)
+        elif is_corner:
+            score -= 3
+            if min_gdist <= 3:
+                score -= 20
+        elif exits >= 3:
+            score += 1.5
+
+        # 2.6 Apertura local (radio 2)
+        open_tiles = 0
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                nx, ny = x+dx, y+dy
+                if 0 <= nx < width and 0 <= ny < h and not walls[nx][ny]:
+                    open_tiles += 1
+        score += 0.2 * open_tiles
+
+        # 2.7 Distancia media a fantasmas
+        if ghost_dists:
+            avg_g = sum(ghost_dists) / len(ghost_dists)
+            if avg_g > 6:
+                score += 4 * (avg_g - 6)
+            elif avg_g < 3:
+                score -= 5 * (3 - avg_g)
+
+        # 2.8 Centralidad
+        if all(g.scaredTimer == 0 for g in ghosts):
+            cx, cy = width / 2, h / 2
+            score -= 0.5 * (abs(x - cx) + abs(y - cy))
+
+        # 2.9 Bonus pasillo despejado
+        best_idx = max(range(len(probs)), key=lambda i: probs[i])
+        best_act = self.idx_to_action[best_idx]
+        dir_vecs = {Directions.NORTH:(0,1), Directions.SOUTH:(0,-1),
+                    Directions.EAST:(1,0),  Directions.WEST:(-1,0)}
+        if best_act in dir_vecs:
+            dx, dy = dir_vecs[best_act]
+            clear = True
+            for step in range(1,5):
+                nx, ny = x + dx*step, y + dy*step
+                if walls[nx][ny] or any(not g.scaredTimer and (nx,ny)==g.getPosition()
+                                        for g in ghosts):
+                    clear = False; break
+            if clear:
+                score += 8
+
+        # 2.10 Antibucle
+        repeats = self._pos_hist.count(pac)
+        score -= 10 * repeats
+
+        # 2.11 Estancamiento
+        food_left = len(food_list)
+        if self._prev_food_left is not None and food_left >= self._prev_food_left:
+            self._steps_no_food += 1
+        else:
+            self._steps_no_food = 0
+        self._prev_food_left = food_left
+        if self._steps_no_food >= 6:
+            score -= 6 * (self._steps_no_food - 5)
+
+        # ─── 3. PENALIZACIÓN STOP (reforzada) ────────────
+        stop_idx = [i for i, a in self.idx_to_action.items() if a == Directions.STOP][0]
+        if Directions.STOP in legal_actions:
+            base_pen = 180 + 200 * close_threats
+            if food_list:
+                base_pen += 60
+            neural_score -= probs[stop_idx] * base_pen
+
+        # Castigo directo si no se mueve (estado detenido)
+        if len(self._pos_hist) and pac == self._pos_hist[-1] and len(legal_actions) > 1:
+            score -= 120 + 200 * close_threats
+
+        # ─── 4. ACTUALIZA HISTORIAL ─────────────────────
+        if not self._pos_hist or pac != self._pos_hist[-1]:
+            self._pos_hist.append(pac)
+
+        # ─── 5. VALOR FINAL ────────────────────────────
         return score + neural_score
+
+
+
+
+
 
     def getAction(self, state):
         """
