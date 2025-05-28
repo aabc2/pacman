@@ -665,3 +665,24 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
             alpha = max(alpha, score)
 
         return bestAction
+    
+class AlphaBetaNeuralAgent(AlphaBetaAgent):
+    """
+    Alpha–Beta que usa la red neuronal y, opcionalmente, una ponderación
+    explícita del score clásico.
+    """
+
+    def __init__(self, depth=3, model_path="models/pacman_model.pth",
+                 alpha=0.0, beta=1.0):          # ← por defecto NO duplica el score
+        super().__init__(depth=depth)
+        self.nn = NeuralAgent(model_path)
+
+        if alpha == 0.0:                        # caso habitual: sólo la red híbrida
+            self.evaluationFunction = self.nn.evaluationFunction
+        else:
+            from multiAgents import scoreEvaluationFunction
+            def hybridEval(state):
+                classic = scoreEvaluationFunction(state)
+                neural  = self.nn.evaluationFunction(state)
+                return alpha * classic + beta * neural
+            self.evaluationFunction = hybridEval
