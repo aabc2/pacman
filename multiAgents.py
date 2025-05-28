@@ -18,7 +18,7 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(999)  # For reproducibility
+random.seed(2)  # For reproducibility
 from game import Agent
 from pacman import GameState
 
@@ -668,21 +668,33 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
     
 class AlphaBetaNeuralAgent(AlphaBetaAgent):
     """
-    Alpha–Beta que usa la red neuronal y, opcionalmente, una ponderación
-    explícita del score clásico.
+    Alpha–Beta cuyo valor de los nodos hoja proviene de la red + heurística
+    opcionalmente combinada con el score clásico (α·S + β·N).
     """
 
-    def __init__(self, depth=3, model_path="models/pacman_model.pth",
-                 alpha=0.0, beta=1.0):          # ← por defecto NO duplica el score
+    def __init__(self, depth='3', model_path="models/pacman_model.pth",
+                 alpha='0.0', beta='1.0'):
+
+        # 1. Convertir strings de la CLI a números
+        depth  = int(depth)
+        alpha  = float(alpha)
+        beta   = float(beta)
+
+        # 2. Constructor del padre (pone evaluationFunction = scoreEvaluationFunction)
         super().__init__(depth=depth)
+
+        # 3. Cargar UNA vez la red
         self.nn = NeuralAgent(model_path)
 
-        if alpha == 0.0:                        # caso habitual: sólo la red híbrida
+        # 4. Reasignar la función de evaluación
+        from multiAgents import scoreEvaluationFunction
+
+        if alpha == 0.0:            # usar solo la parte neuronal+híbrida
             self.evaluationFunction = self.nn.evaluationFunction
         else:
-            from multiAgents import scoreEvaluationFunction
+            # Wrapper sin duplicar el score clásico
             def hybridEval(state):
-                classic = scoreEvaluationFunction(state)
-                neural  = self.nn.evaluationFunction(state)
-                return alpha * classic + beta * neural
+                S = scoreEvaluationFunction(state)
+                N = self.nn.evaluationFunction(state) - S
+                return alpha * S + beta * N
             self.evaluationFunction = hybridEval
