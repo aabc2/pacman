@@ -18,7 +18,7 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(999)  # For reproducibility
+random.seed(123)  # For reproducibility
 from game import Agent
 from pacman import GameState
 
@@ -393,23 +393,40 @@ class NeuralAgent(Agent):
         if self._steps_no_food >= 6:
             score -= 6 * (self._steps_no_food - 5)
 
-        # ─── 3. PENALIZACIÓN STOP (reforzada) ────────────
+            # ─── 3. PENALIZACIÓN STOP (reforzada) ────────────
+        # Castigamos la probabilidad de STOP proveniente de la red
         stop_idx = [i for i, a in self.idx_to_action.items() if a == Directions.STOP][0]
+
         if Directions.STOP in legal_actions:
-            base_pen = 180 + 200 * close_threats
+            # ► Nueva lógica: penalización escalada por distancia al fantasma activo más cercano
+            active_ghosts = [g for g in ghosts if g.scaredTimer == 0]
+            if active_ghosts:
+                min_safe = min(manhattanDistance(pac, g.getPosition()) for g in active_ghosts)
+            else:
+                min_safe = 999   # no hay fantasmas vivos en el mapa
+
+            # Penalización base
+            base_pen = 100
+
+            # Si no hay amenazas <5 casillas, incrementa castigo
+            if min_safe >= 8:
+                base_pen += 200      # 300 total (zona muy segura)
+            elif min_safe >= 5:
+                base_pen += 140      # 240 total
+            elif min_safe >= 3:
+                base_pen += 60       # 160 total
+            else:
+                # zona peligrosa: mantenemos la penalización original (+ cercana)
+                base_pen = 180 + 200 * close_threats
+
+            # Un plus si hay comida accesible cerca (desincentiva “pensar” parado)
             if food_list:
                 base_pen += 60
+
             neural_score -= probs[stop_idx] * base_pen
 
-        # Castigo directo si no se mueve (estado detenido)
-        if len(self._pos_hist) and pac == self._pos_hist[-1] and len(legal_actions) > 1:
-            score -= 120 + 200 * close_threats
 
-        # ─── 4. ACTUALIZA HISTORIAL ─────────────────────
-        if not self._pos_hist or pac != self._pos_hist[-1]:
-            self._pos_hist.append(pac)
-
-        # ─── 5. VALOR FINAL ────────────────────────────
+            # ─── 5. VALOR FINAL ────────────────────────────
         return score + neural_score
 
 
@@ -484,6 +501,9 @@ class NeuralAgent(Agent):
         
         # Devolver la mejor acción
         return successors[0][0]
+
+
+
 
 # Definir una función para crear el agente
 def createNeuralAgent(model_path="models/pacman_model.pth"):
@@ -665,3 +685,43 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
             alpha = max(alpha, score)
 
         return bestAction
+    
+    ###############################################################################
+# Alpha–Beta + Red neuronal (híbrido)                                         #
+###############################################################################
+
+class AlphaBetaNeuralAgent(AlphaBetaAgent):
+    """
+    Variante de Alpha-Beta que evalúa los nodos hoja con la red de NeuralAgent
+    (que ya incorpora una heurística rica) y, opcionalmente, los combina con el
+    score clásico de Berkeley:   V = α · S_clásico  +  β · N_red
+    - α = 0  ⇒  solo red + heurística
+    - β = 0  ⇒  solo score clásico   (no suele interesar)
+    """
+
+    def __init__(self, depth=3, model_path="models/pacman_model.pth",
+                 alpha=0.4, beta=0.6):
+        # 0. Normalizar tipos (por si vienen como strings desde la CLI)
+        depth  = int(depth)
+        alpha  = float(alpha)
+        beta   = float(beta)
+
+        # 1. Llamar al constructor padre (con scoreEvaluationFunction por defecto)
+        super().__init__(evalFn='scoreEvaluationFunction', depth=depth)
+
+        # 2. Cargar la red UNA sola vez por instancia
+        self.nn = NeuralAgent(model_path)
+
+        # 3. Generar la función de evaluación que usará AlphaBeta
+        from multiAgents import scoreEvaluationFunction      # evita import circular
+
+        if alpha == 0.0:
+            # ⇒ usar solo la parte neuronal + heurística
+            self.evaluationFunction = lambda state: self.nn.evaluationFunction(state)
+        else:
+            # ⇒ wrapper mixto sin duplicar el score clásico
+            def hybridEval(state):
+                S = scoreEvaluationFunction(state)                     # parte clásica
+                N = self.nn.evaluationFunction(state) - S              # puramente red
+                return alpha * S + beta * N
+            self.evaluationFunction = hybridEval

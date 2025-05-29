@@ -13,8 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 # Fijamos todas las semillas para reproducibilidad
-torch.manual_seed(999)
-random.seed(999)
+torch.manual_seed(123)
+random.seed(123)
 # Constantes
 INPUT_SIZE = None  # Se determinará en tiempo de ejecución basado en el tamaño del mapa
 HIDDEN_SIZE = 128
