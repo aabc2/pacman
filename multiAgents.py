@@ -18,7 +18,7 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(10)  # For reproducibility
+random.seed(12)  # For reproducibility
 from game import Agent
 from pacman import GameState
 
@@ -673,10 +673,10 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
 class AlphaBetaNeuralAgent(AlphaBetaAgent):
     """
     Variante de Alpha-Beta que evalúa los nodos hoja con la red de NeuralAgent
-    (que ya incorpora una heurística rica) y, opcionalmente, los combina con el
-    score clásico de Berkeley:   V = α · S_clásico  +  β · N_red
-    - α = 0  ⇒  solo red + heurística
-    - β = 0  ⇒  solo score clásico   (no suele interesar)
+    y, opcionalmente, los combina con el
+    score clásico de Berkeley:   V = alpha * S_clásico  +  beta * N_red
+    - alpha = 0  ⇒  solo red + heurística
+    - beta = 0  ⇒  solo score clásico
     """
 
     def __init__(self, depth=3, model_path="models/pacman_model.pth",
@@ -707,12 +707,12 @@ class AlphaBetaNeuralAgent(AlphaBetaAgent):
 
 class AlphaBetaNeuralAgent2(AlphaBetaAgent):
     """
-    Variante Alpha-Beta con mezcla dinámica de score clásico (α) y red neuronal (β).
+    Variante Alpha-Beta con mezcla dinámica de score clásico (alpha) y red neuronal (beta).
     Aumenta el peso de la red conforme avanza la partida.
     """
 
     def __init__(self, evalFn='scoreEvaluationFunction', depth='2',
-                 model_path="models/pacman_model.pth", alpha='0.5', beta='0.5', **kwargs):
+                 model_path="models/pacman_model.pth", alpha='0.7', beta='0.3', **kwargs):
         depth = int(depth)
         self.alpha_max = float(alpha)
         self.beta_max  = float(beta)
