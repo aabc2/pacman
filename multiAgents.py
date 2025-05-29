@@ -18,7 +18,7 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(2)  # For reproducibility
+random.seed(10)  # For reproducibility
 from game import Agent
 from pacman import GameState
 
@@ -693,7 +693,6 @@ class AlphaBetaNeuralAgent(AlphaBetaAgent):
         self.nn = NeuralAgent(model_path)
 
         # 3. Generar la función de evaluación que usará AlphaBeta
-        from multiAgents import scoreEvaluationFunction      # evita import circular
 
         if alpha == 0.0:
             # ⇒ usar solo la parte neuronal + heurística
@@ -705,3 +704,43 @@ class AlphaBetaNeuralAgent(AlphaBetaAgent):
                 N = self.nn.evaluationFunction(state) - S              # puramente red
                 return alpha * S + beta * N
             self.evaluationFunction = hybridEval
+
+class AlphaBetaNeuralAgent2(AlphaBetaAgent):
+    """
+    Variante Alpha-Beta con mezcla dinámica de score clásico (α) y red neuronal (β).
+    Aumenta el peso de la red conforme avanza la partida.
+    """
+
+    def __init__(self, evalFn='scoreEvaluationFunction', depth='2',
+                 model_path="models/pacman_model.pth", alpha='0.5', beta='0.5', **kwargs):
+        depth = int(depth)
+        self.alpha_max = float(alpha)
+        self.beta_max  = float(beta)
+        self.move_count = 0
+
+
+        super().__init__(evalFn=evalFn, depth=depth)
+        self.nn = NeuralAgent(model_path)
+
+    def getAction(self, gameState):
+
+        self.move_count += 1  # incrementa en cada turno
+        progress = min(1.0, self.move_count / 200)
+
+        alpha = self.alpha_max * (1 - progress)
+        beta  = self.beta_max * progress
+
+        def hybridEval(state):
+            S = scoreEvaluationFunction(state)
+            N = self.nn.evaluationFunction(state) - S
+            return alpha * S + beta * N
+
+        self.evaluationFunction = hybridEval
+
+        return super().getAction(gameState)
+
+agents = {
+    "NeuralAgent": NeuralAgent,
+    "AlphaBetaNeuralAgent": AlphaBetaNeuralAgent,     # versión estatica
+    "AlphaBetaNeuralAgent2": AlphaBetaNeuralAgent2,   # versión dinámica 
+}
