@@ -666,35 +666,42 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
 
         return bestAction
     
+###############################################################################
+# Alpha–Beta + Red neuronal (híbrido)                                         #
+###############################################################################
+
 class AlphaBetaNeuralAgent(AlphaBetaAgent):
     """
-    Alpha–Beta cuyo valor de los nodos hoja proviene de la red + heurística
-    opcionalmente combinada con el score clásico (α·S + β·N).
+    Variante de Alpha-Beta que evalúa los nodos hoja con la red de NeuralAgent
+    (que ya incorpora una heurística rica) y, opcionalmente, los combina con el
+    score clásico de Berkeley:   V = α · S_clásico  +  β · N_red
+    - α = 0  ⇒  solo red + heurística
+    - β = 0  ⇒  solo score clásico   (no suele interesar)
     """
 
-    def __init__(self, depth='3', model_path="models/pacman_model.pth",
-                 alpha='0.0', beta='1.0'):
-
-        # 1. Convertir strings de la CLI a números
+    def __init__(self, depth=3, model_path="models/pacman_model.pth",
+                 alpha=0.0, beta=1.0):
+        # 0. Normalizar tipos (por si vienen como strings desde la CLI)
         depth  = int(depth)
         alpha  = float(alpha)
         beta   = float(beta)
 
-        # 2. Constructor del padre (pone evaluationFunction = scoreEvaluationFunction)
-        super().__init__(depth=depth)
+        # 1. Llamar al constructor padre (con scoreEvaluationFunction por defecto)
+        super().__init__(evalFn='scoreEvaluationFunction', depth=depth)
 
-        # 3. Cargar UNA vez la red
+        # 2. Cargar la red UNA sola vez por instancia
         self.nn = NeuralAgent(model_path)
 
-        # 4. Reasignar la función de evaluación
-        from multiAgents import scoreEvaluationFunction
+        # 3. Generar la función de evaluación que usará AlphaBeta
+        from multiAgents import scoreEvaluationFunction      # evita import circular
 
-        if alpha == 0.0:            # usar solo la parte neuronal+híbrida
-            self.evaluationFunction = self.nn.evaluationFunction
+        if alpha == 0.0:
+            # ⇒ usar solo la parte neuronal + heurística
+            self.evaluationFunction = lambda state: self.nn.evaluationFunction(state)
         else:
-            # Wrapper sin duplicar el score clásico
+            # ⇒ wrapper mixto sin duplicar el score clásico
             def hybridEval(state):
-                S = scoreEvaluationFunction(state)
-                N = self.nn.evaluationFunction(state) - S
+                S = scoreEvaluationFunction(state)                     # parte clásica
+                N = self.nn.evaluationFunction(state) - S              # puramente red
                 return alpha * S + beta * N
             self.evaluationFunction = hybridEval
