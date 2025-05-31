@@ -18,7 +18,7 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(12)  # For reproducibility
+random.seed(18)  # For reproducibility
 from game import Agent
 from pacman import GameState
 import logging
@@ -733,7 +733,6 @@ class AlphaBetaNeuralAgent2(AlphaBetaAgent):
         self.nn = NeuralAgent(model_path)
 
     def getAction(self, gameState):
-        logging.info(f"Turno {self.move_count}: alpha={alpha:.2f}, beta={beta:.2f}")
 
         self.move_count += 1  # incrementa en cada turno
         progress = min(1.0, self.move_count / 200)
@@ -748,6 +747,8 @@ class AlphaBetaNeuralAgent2(AlphaBetaAgent):
 
         self.evaluationFunction = hybridEval
 
+        logging.info(f"Turno {self.move_count}: alpha={alpha:.2f}, beta={beta:.2f}")
+        
         return super().getAction(gameState)
 
 agents = {
