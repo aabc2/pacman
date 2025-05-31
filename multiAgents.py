@@ -18,9 +18,10 @@ import os
 from util import manhattanDistance
 from game import Directions
 import random, util
-random.seed(13)  # For reproducibility
+random.seed(12)  # For reproducibility
 from game import Agent
 from pacman import GameState
+import logging
 
 class ReflexAgent(Agent):
     """
@@ -622,6 +623,7 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
                 successor = gameState.generateSuccessor(agentIndex, action)
                 v = max(v, alphabeta(1, depth, successor, alpha, beta))  # Ghosts start at index 1
                 if v > beta:
+                    logging.info(f"Poda en maxValue: acción '{action}' descartada (v={v:.2f} > beta={beta:.2f})")
                     return v  # Prune the remaining branches
                 alpha = max(alpha, v)
             return v
@@ -644,8 +646,11 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
             # Iterate through all possible actions and update alpha-beta values
             for action in legalActions:
                 successor = gameState.generateSuccessor(agentIndex, action)
+                score = alphabeta(nextAgent, depth, successor, alpha, beta)
+                logging.info(f"Evaluado acción '{action}' -> score={score:.2f}")
                 v = min(v, alphabeta(nextAgent, depth, successor, alpha, beta))
                 if v < alpha:
+                    logging.info(f"Poda en minValue: acción '{action}' descartada (v={v:.2f} < alpha={alpha:.2f})")
                     return v  # Prune the remaining branches
                 beta = min(beta, v)
             return v
@@ -664,6 +669,7 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
                 bestAction = action
             alpha = max(alpha, score)
 
+        logging.info(f"Acción final elegida este turno -> '{bestAction} con score {bestScore:.2f}")
         return bestAction
     
 ###############################################################################
@@ -704,6 +710,10 @@ class AlphaBetaNeuralAgent(AlphaBetaAgent):
                 N = self.nn.evaluationFunction(state) - S              # puramente red
                 return alpha * S + beta * N
             self.evaluationFunction = hybridEval
+        
+        logging.basicConfig(filename="agent_log.txt", level=logging.INFO,
+                            format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.info("Nueva partida iniciada")
 
 class AlphaBetaNeuralAgent2(AlphaBetaAgent):
     """
@@ -723,6 +733,7 @@ class AlphaBetaNeuralAgent2(AlphaBetaAgent):
         self.nn = NeuralAgent(model_path)
 
     def getAction(self, gameState):
+        logging.info(f"Turno {self.move_count}: alpha={alpha:.2f}, beta={beta:.2f}")
 
         self.move_count += 1  # incrementa en cada turno
         progress = min(1.0, self.move_count / 200)
