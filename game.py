@@ -780,6 +780,11 @@ class Game:
 
             # Allow for game specific conditions (winning, losing, etc.)
             self.rules.process(self.state, self)
+
+            if self.gameOver and self.data_collector and agentIndex == 0:
+                # Forzar la captura del estado final
+                self.data_collector.capture_step(agentIndex, self.state, action, None)
+
             # Track progress
             if agentIndex == numAgents + 1:
                 self.numMoves += 1
