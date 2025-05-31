@@ -106,6 +106,12 @@ class GameDataCollector:
         if self.replay_mode:
             return
         
+        # Verificar si la partida terminó en derrota
+        if self.current_game_data and self.current_game_data[-1]['is_lose']:
+            print("Partida perdida, no se guardarán los datos.")
+            self.current_game_data = []  # Limpiar los datos sin guardar
+            return
+
         if not os.path.exists(self.output_dir):
             game_id = 0
         else:
